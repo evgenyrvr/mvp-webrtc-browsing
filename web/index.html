@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DION | Приложения</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/printing.js" defer></script>
+  <script src="/session.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="product-banner">Ваши рабочие приложения — в одном пространстве</div>
+  <header class="product-rail">
+    <a class="brand" href="/" aria-label="DION — главная"><span class="mark">D</span></a>
+    <a class="rail-link" href="/" aria-label="Приложения"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg><span>Главная</span></a>
+    <div class="rail-bottom"><span class="product-label">DION</span><span class="online-dot" title="Рабочее пространство"></span></div>
+  </header>
+  <main>
+    <div id="message" role="status" aria-live="polite" hidden></div>
+    <section id="login-panel" class="login-layout" hidden>
+      <div><p class="eyebrow">ВАШИ ПРИЛОЖЕНИЯ, ГДЕ БЫ ВЫ НИ БЫЛИ</p><h1>Рабочее место.<br>В одной вкладке.</h1><p class="lead">Откройте нужное приложение и продолжайте работу в браузере. Всё необходимое — в вашем рабочем пространстве.</p><div class="tags"><span>Falkon</span><span>Терминал</span><span>Локальная печать</span></div></div>
+      <form id="login-form" class="panel"><h2>Вход в пространство</h2><p class="muted">Используйте учётную запись, выданную администратором.</p><label>Логин<input name="login" autocomplete="username" required maxlength="80"></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><button type="submit">Войти</button></form>
+    </section>
+    <div id="account" hidden><div class="account-avatar" aria-hidden="true">D</div><span id="login-name"></span><button id="logout" class="secondary">Выйти</button></div>
+    <section id="workspace" hidden>
+      <nav class="workspace-nav" aria-label="Рабочее пространство">
+        <div class="workspace-brand">Рабочее пространство<span>Опубликованные приложения</span></div>
+        <button id="catalog-tab" class="tab active"><span aria-hidden="true">▦</span> Мои приложения</button>
+        <a class="nav-link" href="/#active-apps"><span aria-hidden="true">◷</span> Активные сеансы</a>
+        <button id="admin-tab" class="tab" hidden><span aria-hidden="true">⚙</span> Администрирование</button>
+        <div class="sidebar-note"><span class="eyebrow">ВАШЕ ПРОСТРАНСТВО</span><p>До двух приложений одновременно.<br>Каждое — в отдельной вкладке.<br>Сеанс завершается через 30 минут.</p></div>
+      </nav>
+      <div id="catalog-view">
+        <div class="section-heading"><div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h1>Мои приложения</h1><p class="muted">Откройте до двух приложений одновременно. Через 30 минут каждое приложение автоматически закроется.</p></div><button id="refresh" class="secondary">Обновить</button></div>
+        <div id="runtime-note" class="notice" hidden>Запуск приложений пока недоступен. Каталог и управление доступом уже работают.</div>
+        <div id="applications" class="cards"></div>
+        <section id="active-apps" class="panel session-panel"><div class="section-heading"><h2>Активные приложения</h2><span id="session-count" class="pill">0 / 2</span></div><div id="sessions"></div></section>
+      </div>
+      <div id="admin-view" hidden>
+        <p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Администрирование</h1><p class="muted">Назначайте пользователям роли и определяйте доступные приложения.</p>
+        <div class="admin-grid">
+          <form id="user-form" class="panel"><h2 id="user-form-title">Новый пользователь</h2><input name="id" type="hidden" value="0"><label>Логин<input name="login" required maxlength="80" autocomplete="off"></label><label>Пароль<input name="password" type="password" maxlength="1024" autocomplete="new-password"><small>При редактировании оставьте пустым, чтобы сохранить пароль.</small></label><label class="check"><input name="enabled" type="checkbox" checked> Учётная запись активна</label><fieldset><legend>Роли</legend><div id="user-roles"></div></fieldset><div class="actions"><button type="submit">Сохранить пользователя</button><button id="reset-user" type="button" class="secondary">Сбросить</button></div></form>
+          <div class="panel"><h2>Пользователи</h2><div id="users-list"></div></div>
+          <form id="role-form" class="panel"><h2>Роли</h2><div id="roles-list"></div><label>Название новой роли<input name="name" required maxlength="80"></label><label class="check"><input name="admin" type="checkbox"> Право администрирования</label><button type="submit">Добавить роль</button></form>
+          <form id="grant-form" class="panel"><h2>Разрешения роли</h2><label>Роль<select name="role_id" id="grant-role"></select></label><label>Приложение<select name="application_id" id="grant-app"></select></label><label class="check"><input name="can_launch" type="checkbox"> Запуск</label><label class="check"><input name="can_control" type="checkbox"> Управление</label><label class="check"><input name="can_print" type="checkbox"> Печать</label><button type="submit">Сохранить доступ</button></form>
+        </div>
+        <section class="panel"><h2>Публикации</h2><div id="publications"></div></section>
+        <section class="panel session-panel"><h2>Все активные сеансы</h2><div id="admin-sessions"></div></section>
+      </div>
+    </section>
+    <section id="session-view" class="panel" hidden>
+      <div class="section-heading"><a href="/">← К приложениям</a><div class="actions"><button id="reconnect-app" class="secondary">Переподключить</button><button id="stop-app" class="secondary">Завершить приложение</button></div></div>
+      <h1 id="session-title">Приложение</h1><p class="muted">Сеанс ограничен 30 минутами с момента запуска. Сохраните результат работы до автоматического закрытия. Затем приложение можно запустить заново.</p><p id="session-state" role="status"></p>
+      <div class="actions remote-toolbar"><button id="layout-us" class="secondary">EN</button><button id="layout-ru" class="secondary">RU</button><button id="remote-address" class="secondary">Адресная строка</button><button id="remote-fullscreen" class="secondary">На весь экран</button></div>
+      <div id="print-documents" aria-live="polite"></div>
+      <div id="remote-stage" class="remote-stage" tabindex="0" aria-label="Удалённое приложение. Нажмите для управления клавиатурой"><video id="remote-video" autoplay playsinline muted></video></div>
+      <p class="muted">Нажмите на изображение для ввода. EN / RU переключают раскладку серверного приложения. Часть сочетаний клавиш может обрабатываться вашей ОС.</p>
+    </section>
+  </main>
+  <footer>DION · Рабочее пространство</footer>
+</body>
+</html>

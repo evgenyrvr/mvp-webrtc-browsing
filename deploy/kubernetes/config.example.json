@@ -1,0 +1,18 @@
+{
+  "namespace": "mvp1",
+  "control_image": "registry.example.org/mvp1/mvp1-control:RELEASE",
+  "worker_image": "registry.example.org/mvp1/mvp1-worker:RELEASE",
+  "image_pull_secret": "mvp1-registry",
+  "storage_class": "REPLACE_WITH_BLOCK_CSI_STORAGE_CLASS",
+  "origin": "https://mvp1.example.org",
+  "turn_url": "turn:turn.example.org:3478?transport=udp",
+  "turn_public_ip": "192.0.2.10",
+  "turn_node_ip": "192.0.2.10",
+  "turn_node_name": "REPLACE_WITH_NODE_HOSTNAME",
+  "application_cidrs": [
+    "192.0.2.128/25"
+  ],
+  "worker_pod_cidrs": [
+    "10.244.0.0/16"
+  ]
+}

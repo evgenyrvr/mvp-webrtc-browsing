@@ -1,0 +1,12 @@
+*
+!bin/
+!bin/session-worker
+!deploy/
+!deploy/worker/
+!deploy/worker/Dockerfile
+!deploy/worker/openbox.xml
+!deploy/worker/welcome.html
+!bin/gateway
+!bin/runner
+!deploy/control/
+!deploy/control/Dockerfile

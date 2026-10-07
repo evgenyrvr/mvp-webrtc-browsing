@@ -1,0 +1,15 @@
+# Example only: replace addresses and secret before running coturn.
+# Official coturn image release: coturn/coturn:4.18.0-r0
+listening-port=3478
+tls-listening-port=5349
+min-port=52000
+max-port=52100
+realm=mvp1.internal
+fingerprint
+use-auth-secret
+static-auth-secret=REPLACE_WITH_LOCAL_SECRET
+no-cli
+no-multicast-peers
+# Set listening-ip, relay-ip and external-ip for the actual network.
+# Set cert and pkey for TURN/TLS, and restrict allowed peers to worker endpoints.
+# Do not expose this example as an unrestricted relay to the protected segment.
