@@ -27,7 +27,7 @@ vet, сборка и race detector прошли. HTTPS health — 200; серв�
 Для длительного прогона:
 
 ```bash
-MVP_BROWSER_KIND=firefox MVP_BROWSER_LAN_IP=192.168.15.38 \
+MVP_BROWSER_KIND=firefox MVP_BROWSER_LAN_IP=SERVER_LAN_IP \
   MVP_BROWSER_HOLD_SECONDS=56 ./testing/browser-check.sh
 ```
 
@@ -103,7 +103,7 @@ Unit/race проверки очереди, ограничения PDF, очис�
 оставалось стабильным, ввод доходил до терминала; захват сеанса второй вкладкой
 не приводил к взаимному переподключению.
 
-`testing/turn-check.sh 192.168.15.38 udp` и тот же запуск с `tcp` прошли:
+`testing/turn-check.sh SERVER_LAN_IP udp` и тот же запуск с `tcp` прошли:
 выбран relay, есть непрерывное видео Firefox/terminal и клавиатурный ввод.
 TCP здесь — транспорт клиент–coturn; relay-кандидат к peer остаётся UDP.
 Это проверка relay в LAN, не испытание внешнего NAT или TURN TLS.
@@ -147,7 +147,7 @@ Go 1.27.1, Pion 4.2.20. Захват 1280×720, настроено 20 fps, VP8 1
 
 ## 2026-09-20: два пользователя, четыре браузерные вкладки
 
-Команда `MVP_BROWSER_MULTI=1 MVP_BROWSER_LAN_IP=192.168.15.38
+Команда `MVP_BROWSER_MULTI=1 MVP_BROWSER_LAN_IP=SERVER_LAN_IP
 ./testing/browser-check.sh` прошла за 79,44 с. Два независимых клиентских
 профиля Firefox, две обычные учётные записи, по Firefox и terminal в отдельных
 вкладках. Во всех четырёх вкладках подтверждены видео 1280×720, рост
@@ -307,7 +307,7 @@ Docker 29.1.3: новый образ `mvp1-worker:publications-testing`, фин�
 дополнительно проверил HTTP403 для неразрешённого порта proxy, отсутствие
 внешнего DNS у app и `ip_forward=0` в worker.
 
-Реальный клиент Firefox через HTTPS/LAN `192.168.15.38`:
+Реальный клиент Firefox через HTTPS/LAN (адрес стенда не публикуется):
 
 - опубликованный Falkon + legacy terminal: 56,01 с, стартовая страница через
   proxy, декодированное видео, 12 с без reconnect, PDF с совпадающей SHA-256,

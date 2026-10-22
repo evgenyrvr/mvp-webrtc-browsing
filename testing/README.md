@@ -70,7 +70,7 @@ fps, bitrate, задержку ввода, RAM/CPU и выбранный ICE tra
 
 ### TURN relay
 
-`./testing/turn-check.sh 192.168.15.38 udp` (или `tcp`) поднимает временный
+`./testing/turn-check.sh SERVER_LAN_IP udp` (или `tcp`) поднимает временный
 coturn на порту 3479 с relay-портами 52150–52199 и запускает браузерный тест
 с принудительным relay. Подставьте LAN IP этой машины. Docker и Firefox
 должны быть установлены. Контейнер и временный секрет удаляются после проверки.
@@ -97,7 +97,7 @@ coturn на порту 3479 с relay-портами 52150–52199 и запус�
 ### Два пользователя в четырёх браузерных вкладках
 
 ```bash
-MVP_BROWSER_MULTI=1 MVP_BROWSER_LAN_IP=192.168.15.38 ./testing/browser-check.sh
+MVP_BROWSER_MULTI=1 MVP_BROWSER_LAN_IP=SERVER_LAN_IP ./testing/browser-check.sh
 ```
 
 Подставьте LAN IP сервера. Этот режим использует два независимых профиля
@@ -113,7 +113,7 @@ API и HTTP 404 для чужого сеанса. Logout первого поль
 ### Chromium на серверной машине
 
 ```bash
-MVP_BROWSER_LAN_IP=192.168.15.38 ./testing/browser-check.sh
+MVP_BROWSER_LAN_IP=SERVER_LAN_IP ./testing/browser-check.sh
 ```
 
 При создании и удалении Docker-интерфейсов локальный Chromium может прервать
@@ -153,3 +153,15 @@ MVP_WORKER_IMAGE=mvp1-worker:pilot MVP_BROWSER_LAN_IP=YOUR_LAN_IP
 просрочивает auth_sessions только в созданной тестом временной БД. Проверяются
 отказ API 401, закрытие медиаклиента, форма входа и повторная аутентификация.
 Граница часа и отсутствие продления проверяются store-тестом с управляемым временем.
+
+В командах `SERVER_LAN_IP` обозначает адрес вашего сервера. Замените placeholder
+локально; реальные адреса стендов не добавляйте в репозиторий.
+
+## Проверка перед публикацией
+
+`python3 testing/publication-check.py` проверяет публикуемые файлы, не выводя
+значения найденных секретов. Проверка включена в `testing/check.sh`.
+`python3 testing/publication-check.py --history` проверяет все достижимые версии
+файлов Git. Допустимы loopback/bind-адреса, диапазоны для документации и
+синтетические адреса тестов/примеров. Реальные адреса используйте только в
+локальной конфигурации. Проверка типовых шаблонов не заменяет просмотр diff.
