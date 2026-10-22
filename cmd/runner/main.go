@@ -38,7 +38,7 @@ func run() error {
 	if net.ParseIP(*publicIP) == nil {
 		return errors.New("public-ip must be a literal IP")
 	}
-	r, err := runner.New(runner.Config{BrowserCPUs: *browserCPUs, Backend: *backend, ImagePullSecret: *pullSecret, Image: *image, Namespace: *namespace, Network: *network, PublicIP: *publicIP, UDPBase: *udp, TURNURL: os.Getenv("MVP_TURN_URL"), TURNSecret: os.Getenv("MVP_TURN_SECRET")})
+	r, err := runner.New(runner.Config{DeniedCIDRs: os.Getenv("MVP_DENIED_CIDRS"), BrowserCPUs: *browserCPUs, Backend: *backend, ImagePullSecret: *pullSecret, Image: *image, Namespace: *namespace, Network: *network, PublicIP: *publicIP, UDPBase: *udp, TURNURL: os.Getenv("MVP_TURN_URL"), TURNSecret: os.Getenv("MVP_TURN_SECRET")})
 	if err != nil {
 		return err
 	}

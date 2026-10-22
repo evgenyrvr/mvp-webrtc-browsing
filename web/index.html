@@ -45,7 +45,18 @@
           <form id="role-form" class="panel"><h2>Роли</h2><div id="roles-list"></div><label>Название новой роли<input name="name" required maxlength="80"></label><label class="check"><input name="admin" type="checkbox"> Право администрирования</label><button type="submit">Добавить роль</button></form>
           <form id="grant-form" class="panel"><h2>Разрешения роли</h2><label>Роль<select name="role_id" id="grant-role"></select></label><label>Приложение<select name="application_id" id="grant-app"></select></label><label class="check"><input name="can_launch" type="checkbox"> Запуск</label><label class="check"><input name="can_control" type="checkbox"> Управление</label><label class="check"><input name="can_print" type="checkbox"> Печать</label><button type="submit">Сохранить доступ</button></form>
         </div>
-        <section class="panel"><h2>Публикации</h2><div id="publications"></div></section>
+        <form id="publication-form" class="panel"><h2 id="publication-form-title">Новая публикация сайта</h2>
+<label>Идентификатор<input name="id" required pattern="[a-z0-9-]{1,64}" maxlength="64" placeholder="yandex"></label>
+<label>Название карточки<input name="name" required maxlength="120" placeholder="Яндекс"></label>
+<label>Браузер<select name="template"><option value="falkon">Falkon</option><option value="firefox">Firefox</option></select></label>
+<label>Стартовая страница<input name="start_url" type="url" required maxlength="4096" placeholder="https://ya.ru"></label>
+<label>Разрешённые домены<input name="domains" placeholder="ya.ru, *.yandex.ru"></label>
+<label>Разрешённые IP / подсети<input name="cidrs" placeholder="10.20.30.40/32, 10.30.0.0/16"></label>
+<label>TCP-порты<input name="ports" required value="443, 80" placeholder="443, 80"></label>
+<label class="check"><input name="enabled" type="checkbox" checked> Опубликовано</label>
+<p class="muted">Списки через запятую. Поддомены задаются отдельно: *.dion.vc не включает dion.vc. Для внутренних адресов укажите CIDR. После сохранения назначьте доступ роли. Изменение публикации завершит её активные сеансы.</p>
+<div class="actions"><button type="submit">Сохранить публикацию</button><button id="reset-publication" type="button" class="secondary">Новая публикация</button></div></form>
+<section class="panel"><h2>Публикации</h2><div id="publications"></div></section>
         <section class="panel session-panel"><h2>Все активные сеансы</h2><div id="admin-sessions"></div></section>
       </div>
     </section>

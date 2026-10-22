@@ -264,7 +264,7 @@ func TestFalkonMigrationPreservesPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reconstruct the previous catalog without changing users or Firefox grants.
-	if _, err := s.db.Exec("ALTER TABLE users RENAME COLUMN password_hash TO password; UPDATE users SET password='test-only'; DELETE FROM role_app_permissions WHERE app_id='falkon'; DELETE FROM applications WHERE id='falkon'; PRAGMA user_version=2"); err != nil {
+	if _, err := s.db.Exec("ALTER TABLE applications DROP COLUMN start_url; ALTER TABLE applications DROP COLUMN access_policy; ALTER TABLE users RENAME COLUMN password_hash TO password; UPDATE users SET password='test-only'; DELETE FROM role_app_permissions WHERE app_id='falkon'; DELETE FROM applications WHERE id='falkon'; PRAGMA user_version=2"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(); err != nil {

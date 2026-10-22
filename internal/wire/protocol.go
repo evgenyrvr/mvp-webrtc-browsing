@@ -2,12 +2,15 @@
 package wire
 
 import "github.com/pion/webrtc/v4"
+import "mvp1/internal/egress"
 
 type Start struct {
-	ID       string `json:"id"`
-	Template string `json:"template"`
-	Control  bool   `json:"control"`
-	Print    bool   `json:"print"`
+	StartURL string         `json:"start_url,omitempty"`
+	Access   *egress.Policy `json:"access,omitempty"`
+	ID       string         `json:"id"`
+	Template string         `json:"template"`
+	Control  bool           `json:"control"`
+	Print    bool           `json:"print"`
 }
 type Offer struct {
 	AuthExpiresAt int64                     `json:"auth_expires_at,omitempty"`

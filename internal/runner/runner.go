@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"regexp"
@@ -29,6 +30,7 @@ var sessionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var namespacePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,30}$`)
 
 type Config struct {
+	DeniedCIDRs     string
 	BrowserCPUs     float64
 	Backend         string
 	ImagePullSecret string
@@ -41,6 +43,7 @@ type Config struct {
 	TURNSecret      string
 }
 type worker struct {
+	split                bool
 	name, token, address string
 	slot                 int
 }
@@ -62,6 +65,13 @@ func New(cfg Config) (*Runner, error) {
 	}
 	if cfg.BrowserCPUs < 0.1 || cfg.BrowserCPUs > 64 || math.IsNaN(cfg.BrowserCPUs) {
 		return nil, errors.New("invalid browser CPU limit")
+	}
+	for _, raw := range strings.Split(cfg.DeniedCIDRs, ",") {
+		if raw != "" {
+			if _, err := netip.ParsePrefix(raw); err != nil {
+				return nil, errors.New("invalid denied CIDR")
+			}
+		}
 	}
 	r := &Runner{config: cfg, workers: map[string]worker{}, http: &http.Client{Timeout: 20 * time.Second}}
 	switch cfg.Backend {
@@ -106,6 +116,11 @@ func (r *Runner) Health(ctx context.Context) error {
 func (r *Runner) Start(ctx context.Context, v wire.Start) error {
 	if !sessionID.MatchString(v.ID) || (v.Template != "falkon" && v.Template != "firefox" && v.Template != "terminal") {
 		return errors.New("invalid session template")
+	}
+	if v.Access != nil {
+		if v.Template == "terminal" || v.Access.ValidateStartURL(v.StartURL) != nil {
+			return errors.New("invalid publication")
+		}
 	}
 	r.lifecycle.Lock()
 	locked := true
@@ -155,13 +170,19 @@ func (r *Runner) Start(ctx context.Context, v wire.Start) error {
 		r.mu.Unlock()
 		return err
 	}
-	w := worker{name: r.config.Namespace + "-" + v.ID, token: hex.EncodeToString(secret), slot: slot}
+	w := worker{split: v.Access != nil, name: r.config.Namespace + "-" + v.ID, token: hex.EncodeToString(secret), slot: slot}
 	// Track before invoking Docker so a failed/ambiguous create can be cleaned up.
 	r.workers[v.ID] = w
 	r.mu.Unlock()
 	if r.kube != nil {
 		credentials, _ := json.Marshal(turn.Credentials(r.config.TURNURL, r.config.TURNSecret, v.ID, time.Now()))
-		if err := r.kube.create(ctx, v.ID, w.token, v.Template, string(credentials)); err != nil {
+		if v.Access != nil {
+			var err error
+			w, err = r.startSplitKube(ctx, v, w, string(credentials))
+			if err != nil {
+				return err
+			}
+		} else if err := r.kube.create(ctx, v.ID, w.token, v.Template, string(credentials)); err != nil {
 			return err
 		}
 		r.lifecycle.Unlock()
@@ -171,6 +192,12 @@ func (r *Runner) Start(ctx context.Context, v wire.Start) error {
 			return err
 		}
 		w.address = address
+	} else if v.Access != nil {
+		var err error
+		w, err = r.startSplitDocker(ctx, v, w, publicIP, internalNetwork)
+		if err != nil {
+			return err
+		}
 	} else {
 		port := strconv.Itoa(r.config.UDPBase + slot)
 		pidsLimit := "256"
@@ -260,17 +287,22 @@ func (r *Runner) Stop(ctx context.Context, id string) error {
 			return err
 		}
 	} else {
-		// Inspect via label/name list distinguishes absent containers from daemon errors.
-		out, err := docker(ctx, "ps", "-aq", "--filter", "label=mvp1.namespace="+r.config.Namespace, "--filter", "name=^/"+w.name+"$")
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(string(out)) != "" {
-			if _, err := docker(ctx, "rm", "-f", w.name); err != nil {
+		for _, name := range []string{w.name + "-app", w.name} {
+			// Inspect via label/name list distinguishes absent containers from daemon errors.
+			out, err := docker(ctx, "ps", "-aq", "--filter", "label=mvp1.namespace="+r.config.Namespace, "--filter", "name=^/"+name+"$")
+			if err != nil {
 				return err
 			}
-		}
+			if strings.TrimSpace(string(out)) != "" {
+				if _, err := docker(ctx, "rm", "-f", name); err != nil {
+					return err
+				}
+			}
 
+		}
+		if err := r.removeSplitNetwork(ctx, id); err != nil {
+			return err
+		}
 	}
 	r.mu.Lock()
 	delete(r.workers, id)
@@ -296,6 +328,17 @@ func (r *Runner) Reset(ctx context.Context) error {
 			}
 		}
 
+	}
+	if r.kube == nil {
+		out, err := docker(ctx, "network", "ls", "-q", "--filter", "label=mvp1.namespace="+r.config.Namespace)
+		if err != nil {
+			return err
+		}
+		for _, id := range strings.Fields(string(out)) {
+			if _, err = docker(ctx, "network", "rm", id); err != nil {
+				return err
+			}
+		}
 	}
 	r.mu.Lock()
 	r.workers = map[string]worker{}
@@ -348,6 +391,13 @@ func (r *Runner) Handler() http.Handler {
 			var out []byte
 			out, err = docker(q.Context(), "ps", "-q", "--filter", "label=mvp1.namespace="+r.config.Namespace, "--filter", "name=^/"+r.config.Namespace+"-"+id+"$")
 			alive = strings.TrimSpace(string(out)) != ""
+			r.mu.Lock()
+			split := r.workers[id].split
+			r.mu.Unlock()
+			if err == nil && alive && split {
+				out, err = docker(q.Context(), "ps", "-q", "--filter", "label=mvp1.namespace="+r.config.Namespace, "--filter", "name=^/"+r.config.Namespace+"-"+id+"-app$")
+				alive = strings.TrimSpace(string(out)) != ""
+			}
 		}
 		if err != nil {
 			http.Error(w, "runtime unavailable", 503)
@@ -367,7 +417,7 @@ func (r *Runner) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /sessions", func(w http.ResponseWriter, q *http.Request) {
 		var v wire.Start
-		if json.NewDecoder(http.MaxBytesReader(w, q.Body, 4096)).Decode(&v) != nil {
+		if json.NewDecoder(http.MaxBytesReader(w, q.Body, 32768)).Decode(&v) != nil {
 			http.Error(w, "invalid request", 400)
 			return
 		}

@@ -169,3 +169,24 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 	return errors.Join(errs...)
 }
+
+// SavePublication serializes policy replacement with launches, so a concurrent
+// launch cannot retain a stale policy or overwrite a stopping state with ready.
+func (s *Service) SavePublication(ctx context.Context, a store.Application) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.store.SavePublication(ctx, a); err != nil {
+		return err
+	}
+	list, err := s.store.Sessions(ctx, 0)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, v := range list {
+		if v.AppID == a.ID {
+			errs = append(errs, s.stop(ctx, v))
+		}
+	}
+	return errors.Join(errs...)
+}

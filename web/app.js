@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const applicationNames = new Map();
 let identity = null, adminData = null, authExpiry, authDeadline = 0;
 function expiredLogin() { signedOut(); notice('Срок входа истёк. Введите логин и пароль снова.'); }
 window.addEventListener('mvp-auth-expired', expiredLogin);
@@ -39,12 +40,12 @@ async function refreshIdentity() {
   const match = location.pathname.match(/^\/sessions\/([a-f0-9]+)$/);
   if (match) {
     $('workspace').hidden = true; $('session-view').hidden = false;
-    const s = await api('/sessions/' + match[1]); $('session-title').textContent = appName(s.application_id); $('session-state').textContent = 'Состояние: ' + stateName(s.state);
+    const apps = await api('/applications'); apps.forEach(a => applicationNames.set(a.id, a.name)); const s = await api('/sessions/' + match[1]); $('session-title').textContent = appName(s.application_id); $('session-state').textContent = 'Состояние: ' + stateName(s.state);
     if (!['closed', 'failed', 'stopping'].includes(s.state)) window.mvpSession.start(s.id, identity.csrf_token);
     $('stop-app').onclick = () => act(async () => { await api('/sessions/' + s.id, 'DELETE'); window.mvpSession.close(); location.assign('/'); }, $('stop-app'));
   } else { $('workspace').hidden = false; $('session-view').hidden = true; await refreshCatalog(); }
 }
-function appName(id) { return ({falkon:'Falkon',firefox:'Firefox',terminal:'Терминал'})[id] || id; }
+function appName(id) { return applicationNames.get(id) || ({falkon:'Falkon',firefox:'Firefox',terminal:'Терминал'})[id] || id; }
 function stateName(state) { return ({ preparing: 'Подготовка', ready: 'Готово', connecting: 'Подключение', active: 'Работает', reconnecting: 'Восстановление связи', stopping: 'Завершение', closed: 'Завершён', failed: 'Ошибка запуска' })[state] || state; }
 function sessionRow(s, admin = false) {
   const row = el('div', undefined, 'row'), title = el('div'); title.append(el('strong', appName(s.application_id)));
@@ -55,10 +56,11 @@ function sessionRow(s, admin = false) {
 }
 async function refreshCatalog() {
   const [apps, sessions] = await Promise.all([api('/applications'), api('/sessions')]);
+  apps.forEach(a => applicationNames.set(a.id, a.name));
   $('runtime-note').hidden = identity.runtime_available; $('applications').replaceChildren();
   if (!apps.length) $('applications').append(el('p', 'Пока нет доступных приложений. Обратитесь к администратору.', 'empty'));
   for (const app of apps) {
-    const card = el('article', undefined, 'app-card'); card.dataset.app = app.id; card.append(el('div', app.id !== 'terminal' ? '◎' : '>_', 'app-icon'), el('h2', app.name), el('p', app.id !== 'terminal' ? 'Работа с внутренними веб-сервисами в удалённом браузере.' : 'Командная строка в отдельном серверном окружении.'));
+    const card = el('article', undefined, 'app-card'); card.dataset.app = app.id; card.append(el('div', app.template !== 'terminal' ? '◎' : '>_', 'app-icon'), el('h2', app.name), el('p', app.start_url || (app.template !== 'terminal' ? 'Работа с внутренними веб-сервисами в удалённом браузере.' : 'Командная строка в отдельном серверном окружении.')));
     card.append(el('span', [app.can_control ? 'Управление' : 'Просмотр', ...(app.can_print ? ['Печать'] : [])].join(' · '), 'pill'));
     const start = el('button', 'Открыть приложение ↗');
     start.addEventListener('click', () => act(async () => {
@@ -90,7 +92,7 @@ function loadGrant() {
   for (const k of ['can_launch', 'can_control', 'can_print']) f.elements[k].checked = Boolean(grant?.[k]);
 }
 async function refreshAdmin() {
-  adminData = await api('/admin');
+  adminData = await api('/admin'); adminData.applications.forEach(a => applicationNames.set(a.id, a.name));
   const selectedRoles = [...$('user-form').querySelectorAll('input[name="role"]:checked')].map(b => Number(b.value));
   const selectedGrantRole = $('grant-role').value, selectedGrantApp = $('grant-app').value;
   $('users-list').replaceChildren();
@@ -101,7 +103,7 @@ async function refreshAdmin() {
   if (adminData.applications.some(a => a.id === selectedGrantApp)) $('grant-app').value = selectedGrantApp;
   renderRoles(selectedRoles); loadGrant();
   $('publications').replaceChildren();
-  for (const a of adminData.applications) { const row = el('div', undefined, 'row'); row.append(el('strong', a.name)); const b = el('button', a.enabled ? 'Снять с публикации' : 'Опубликовать', 'secondary'); b.onclick = () => act(async () => { await api('/admin/applications/' + a.id, 'PUT', { enabled: !a.enabled }); await refreshAdmin(); }, b); row.append(b); $('publications').append(row); }
+  for (const a of adminData.applications) { const row = el('div', undefined, 'row'); row.append(el('strong', a.name)); const b = el('button', a.enabled ? 'Снять с публикации' : 'Опубликовать', 'secondary'); b.onclick = () => act(async () => { await api('/admin/applications/' + a.id, 'PUT', { enabled: !a.enabled }); await refreshAdmin(); }, b); row.append(b); if (a.access) {const edit = el('button', 'Настройки', 'secondary'); edit.onclick = () => editPublication(a); row.append(edit);} else {row.append(el('small', 'Общее приложение · без правил публикации сайта'));} $('publications').append(row); }
   $('admin-sessions').replaceChildren(...adminData.sessions.map(s => sessionRow(s, true))); if (!adminData.sessions.length) $('admin-sessions').append(el('p', 'Нет активных сеансов.', 'empty'));
 }
 $('login-form').addEventListener('submit', e => { e.preventDefault(); act(async () => { const form = e.currentTarget; identity = await api('/login', 'POST', { login: form.elements.login.value, password: form.elements.password.value }); form.elements.password.value = ''; await refreshIdentity(); }, e.submitter); });
@@ -124,3 +126,31 @@ $('role-form').addEventListener('submit', e => { e.preventDefault(); const f = e
 $('grant-form').addEventListener('submit', e => { e.preventDefault(); const f = e.currentTarget; act(async () => { await api('/admin/grants', 'PUT', { role_id: Number(f.elements.role_id.value), application_id: f.elements.application_id.value, can_launch: f.elements.can_launch.checked, can_control: f.elements.can_control.checked, can_print: f.elements.can_print.checked }); await refreshAdmin(); notice('Разрешения сохранены.'); }, e.submitter); });
 $('grant-role').onchange = loadGrant; $('grant-app').onchange = loadGrant;
 refreshIdentity().catch(e => { signedOut(); if (e.status !== 401) notice(e.message, true); });
+
+function resetPublication() {
+ const f=$('publication-form'); f.reset(); f.elements.id.readOnly=false;
+ $('publication-form-title').textContent='Новая публикация сайта';
+}
+function editPublication(a) {
+ const f=$('publication-form');
+ for (const key of ['id','name','template','start_url']) f.elements[key].value=a[key];
+ f.elements.enabled.checked=a.enabled; f.elements.id.readOnly=true;
+ for (const key of ['domains','cidrs','ports']) f.elements[key].value=(a.access[key] || []).join(', ');
+ $('publication-form-title').textContent='Настройки публикации'; f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+$('reset-publication').onclick=resetPublication;
+$('publication-form').addEventListener('submit',e=>{
+ e.preventDefault(); const f=e.currentTarget;
+ act(async()=>{
+  const list=name=>f.elements[name].value.split(',').map(v=>v.trim()).filter(Boolean);
+  const domains=list('domains').map(v=>v.toLowerCase());
+  const cidrs=list('cidrs').map(v=>v.includes('/')?v:v+(v.includes(':')?'/128':'/32'));
+  const ports=list('ports').map(Number);
+  if (ports.some(v=>!Number.isInteger(v)||v<1||v>65535)) throw new Error('Порты должны быть целыми числами от 1 до 65535.');
+  await api('/admin/publications/'+encodeURIComponent(f.elements.id.value),'PUT',{
+   name:f.elements.name.value,template:f.elements.template.value,start_url:f.elements.start_url.value,
+   enabled:f.elements.enabled.checked,access:{domains,cidrs,ports}
+  });
+  await refreshAdmin(); notice('Публикация сохранена. Назначьте доступ в разделе «Разрешения роли».');
+ },e.submitter);
+});

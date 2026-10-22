@@ -59,7 +59,7 @@ func (k *kubernetes) path() string {
 	return "/api/v1/namespaces/" + url.PathEscape(k.namespace) + "/pods"
 }
 func (k *kubernetes) selector() string {
-	return "mvp1.runner=" + k.namespace + ",app.kubernetes.io/component=session"
+	return "mvp1.runner=" + k.namespace
 }
 func podName(id string) string { return "mvp1-" + id[:56] }
 
@@ -110,7 +110,7 @@ func (k *kubernetes) list(ctx context.Context) ([]kubePod, error) {
 	return list.Items, err
 }
 func (k *kubernetes) owned(p kubePod) bool {
-	return p.Metadata.Labels["mvp1.runner"] == k.namespace && p.Metadata.Labels["app.kubernetes.io/component"] == "session"
+	return p.Metadata.Labels["mvp1.runner"] == k.namespace && (p.Metadata.Labels["app.kubernetes.io/component"] == "session" || p.Metadata.Labels["app.kubernetes.io/component"] == "isolated-app")
 }
 func (k *kubernetes) get(ctx context.Context, id string) (kubePod, bool, error) {
 	var pod kubePod
@@ -163,10 +163,17 @@ func (k *kubernetes) create(ctx context.Context, id, token, template, ice string
 	return nil
 }
 func (k *kubernetes) waitRunning(ctx context.Context, id string) (string, error) {
+	ip, err := k.waitNamed(ctx, podName(id))
+	if err != nil {
+		return "", err
+	}
+	return "http://" + net.JoinHostPort(ip, "8081"), nil
+}
+func (k *kubernetes) waitNamed(ctx context.Context, name string) (string, error) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		pod, exists, err := k.get(ctx, id)
+		pod, exists, err := k.getNamed(ctx, name)
 		if err != nil {
 			return "", err
 		}
@@ -180,7 +187,7 @@ func (k *kubernetes) waitRunning(ctx context.Context, id string) (string, error)
 			if net.ParseIP(pod.Status.PodIP).To4() == nil {
 				return "", errors.New("MVP requires IPv4 Pod addresses")
 			}
-			return "http://" + net.JoinHostPort(pod.Status.PodIP, "8081"), nil
+			return pod.Status.PodIP, nil
 		}
 		select {
 		case <-ctx.Done():
@@ -220,11 +227,19 @@ func (k *kubernetes) remove(ctx context.Context, p kubePod) error {
 	}
 }
 func (k *kubernetes) stop(ctx context.Context, id string) error {
-	p, exists, err := k.get(ctx, id)
-	if err != nil || !exists {
+	if err := k.stopSplit(ctx, id); err != nil {
 		return err
 	}
-	return k.remove(ctx, p)
+	p, exists, err := k.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err = k.remove(ctx, p); err != nil {
+			return err
+		}
+	}
+	return k.removePolicies(ctx, id)
 }
 func (k *kubernetes) reset(ctx context.Context) error {
 	pods, err := k.list(ctx)
@@ -236,9 +251,31 @@ func (k *kubernetes) reset(ctx context.Context) error {
 			return err
 		}
 	}
+	return k.resetPolicies(ctx)
+}
+func (k *kubernetes) resetPolicies(ctx context.Context) error {
+	var list struct {
+		Items []kubePod `json:"items"`
+	}
+	if _, err := k.call(ctx, "GET", k.policyPath()+"?labelSelector="+url.QueryEscape("mvp1.runner="+k.namespace), nil, &list); err != nil {
+		return err
+	}
+	for _, p := range list.Items {
+		if p.Metadata.Labels["mvp1.runner"] != k.namespace || p.Metadata.UID == "" {
+			return errors.New("unowned policy")
+		}
+		if _, err := k.call(ctx, "DELETE", k.policyPath()+"/"+url.PathEscape(p.Metadata.Name), map[string]any{"preconditions": map[string]string{"uid": p.Metadata.UID}}, nil); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (k *kubernetes) alive(ctx context.Context, id string) (bool, error) {
 	p, exists, err := k.get(ctx, id)
-	return exists && p.Metadata.DeletionTimestamp == nil && (p.Status.Phase == "Pending" || p.Status.Phase == "Running"), err
+	alive := exists && p.Metadata.DeletionTimestamp == nil && (p.Status.Phase == "Pending" || p.Status.Phase == "Running")
+	if err == nil && alive && p.Metadata.Labels["mvp1.part"] == "relay" {
+		app, exists, e := k.getNamed(ctx, splitAppName(id))
+		return exists && app.Metadata.DeletionTimestamp == nil && (app.Status.Phase == "Pending" || app.Status.Phase == "Running"), e
+	}
+	return alive, err
 }

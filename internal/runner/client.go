@@ -56,7 +56,7 @@ func (c *Client) Available() bool {
 	return c.Call(ctx, "GET", "/healthz", nil, nil) == nil
 }
 func (c *Client) Start(ctx context.Context, s store.Session, a store.Application) error {
-	return c.Call(ctx, "POST", "/sessions", wire.Start{ID: s.ID, Template: a.Template, Control: a.Control, Print: a.Print}, nil)
+	return c.Call(ctx, "POST", "/sessions", wire.Start{StartURL: a.StartURL, Access: a.Access, ID: s.ID, Template: a.Template, Control: a.Control, Print: a.Print}, nil)
 }
 func (c *Client) Stop(ctx context.Context, id string) error {
 	return c.Call(ctx, "DELETE", "/sessions/"+id, nil, nil)

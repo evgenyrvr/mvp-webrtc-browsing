@@ -4,12 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"mvp1/internal/appbridge"
+	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -39,6 +45,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if os.Getenv("MVP_MODE") == "relay" {
+		return runRelay(ctx, port)
+	}
 	prepare := exec.CommandContext(ctx, "mkdir", "-p", "/home/app/profile")
 	prepare.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
 	if err = prepare.Run(); err != nil {
@@ -50,6 +59,9 @@ func run() error {
 	launch := func(name string, args ...string) error {
 		cmd := exec.CommandContext(ctx, name, args...)
 		cmd.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/home/app", "USER=app", "LOGNAME=app", "SHELL=/bin/bash", "DISPLAY=:99", "LANG=C.UTF-8", "CUPS_SERVER=127.0.0.1:8631"}
+		if proxy := os.Getenv("MVP_PROXY"); proxy != "" {
+			cmd.Env = append(cmd.Env, "http_proxy="+proxy, "https_proxy="+proxy, "HTTP_PROXY="+proxy, "HTTPS_PROXY="+proxy, "QTWEBENGINE_CHROMIUM_FLAGS=--proxy-server="+proxy+" --proxy-bypass-list=<-loopback>")
+		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -100,12 +112,41 @@ waitDisplay:
 	if err := launch("openbox", "--config-file", "/opt/mvp1/openbox.xml"); err != nil {
 		return err
 	}
+	startURL := "file:///opt/mvp1/welcome.html"
+	if os.Getenv("MVP_MODE") == "app" {
+		startURL = os.Getenv("MVP_START_URL")
+		proxy, err := url.Parse(os.Getenv("MVP_PROXY"))
+		if err != nil || proxy.Host == "" {
+			return errors.New("invalid proxy")
+		}
+		// Configure Firefox explicitly; QtWebEngine receives proxy flags in its clean environment.
+		settings := fmt.Sprintf("user_pref(\"network.proxy.type\", 1);\nuser_pref(\"network.proxy.http\", %q);\nuser_pref(\"network.proxy.http_port\", 8082);\nuser_pref(\"network.proxy.ssl\", %q);\nuser_pref(\"network.proxy.ssl_port\", 8082);\nuser_pref(\"network.proxy.no_proxies_on\", \"\");\nuser_pref(\"network.proxy.allow_hijacking_localhost\", true);\nuser_pref(\"network.trr.mode\", 5);\n", proxy.Hostname(), proxy.Hostname())
+		prefs := exec.CommandContext(ctx, "tee", "/home/app/profile/user.js")
+		prefs.Env = []string{"PATH=/usr/bin:/bin"}
+		prefs.Stdin = strings.NewReader(settings)
+		prefs.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
+		if err := prefs.Run(); err != nil {
+			return err
+		}
+		until := time.Now().Add(15 * time.Second)
+		for {
+			conn, e := net.DialTimeout("tcp", proxy.Host, time.Second)
+			if e == nil {
+				conn.Close()
+				break
+			}
+			if ctx.Err() != nil || time.Now().After(until) {
+				return errors.New("proxy unavailable")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 	if app == "falkon" {
-		if err := launch("falkon", "--no-remote", "--profile", "mvp1", "file:///opt/mvp1/welcome.html"); err != nil {
+		if err := launch("falkon", "--no-remote", "--profile", "mvp1", startURL); err != nil {
 			return err
 		}
 	} else if app == "firefox" {
-		if err := launch("firefox-esr", "--no-remote", "--profile", "/home/app/profile", "--width", "1280", "--height", "720", "file:///opt/mvp1/welcome.html"); err != nil {
+		if err := launch("firefox-esr", "--no-remote", "--profile", "/home/app/profile", "--width", "1280", "--height", "720", startURL); err != nil {
 			return err
 		}
 	} else {
@@ -118,6 +159,25 @@ waitDisplay:
 	readyCancel()
 	if err != nil {
 		return err
+	}
+	if os.Getenv("MVP_MODE") == "app" {
+		target, err := url.Parse(os.Getenv("MVP_PRINT_TARGET"))
+		if err != nil || target.Host == "" {
+			return errors.New("invalid print target")
+		}
+		ipp := &http.Server{Addr: "127.0.0.1:8631", Handler: httputil.NewSingleHostReverseProxy(target), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+		defer ipp.Close()
+		srv := &http.Server{Addr: ":8090", Handler: appbridge.Handler(os.Getenv("MVP_AGENT_TOKEN"), keyboard), ReadHeaderTimeout: 3 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+		defer srv.Close()
+		done := make(chan error, 2)
+		go func() { done <- ipp.ListenAndServe() }()
+		go func() { done <- srv.ListenAndServe() }()
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-done:
+			return err
+		}
 	}
 	var iceServers []webrtc.ICEServer
 	if raw := os.Getenv("MVP_ICE_SERVERS"); raw != "" {

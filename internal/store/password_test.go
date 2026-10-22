@@ -94,7 +94,7 @@ func TestPlaintextMigrationPreservesPasswordsAndInvalidatesCookies(t *testing.T)
 	}
 	// Includes a hash-looking password: it is plaintext in schema 3 and must be hashed again.
 	plain := "$argon2id$v=19$m=19456,t=2,p=1$legacy-password-marker"
-	if _, err = s.db.Exec("ALTER TABLE users RENAME COLUMN password_hash TO password; UPDATE users SET password=?; PRAGMA user_version=3", plain); err != nil {
+	if _, err = s.db.Exec("ALTER TABLE applications DROP COLUMN start_url; ALTER TABLE applications DROP COLUMN access_policy; ALTER TABLE users RENAME COLUMN password_hash TO password; UPDATE users SET password=?; PRAGMA user_version=3", plain); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

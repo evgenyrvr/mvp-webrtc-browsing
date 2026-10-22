@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"mvp1/internal/egress"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,14 +46,16 @@ type Role struct {
 	Admin bool   `json:"admin"`
 }
 type Application struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Template      string `json:"template"`
-	Enabled       bool   `json:"enabled"`
-	Launch        bool   `json:"can_launch"`
-	Control       bool   `json:"can_control"`
-	Print         bool   `json:"can_print"`
-	PolicyVersion int64  `json:"-"`
+	StartURL      string         `json:"start_url"`
+	Access        *egress.Policy `json:"access,omitempty"`
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	Template      string         `json:"template"`
+	Enabled       bool           `json:"enabled"`
+	Launch        bool           `json:"can_launch"`
+	Control       bool           `json:"can_control"`
+	Print         bool           `json:"can_print"`
+	PolicyVersion int64          `json:"-"`
 }
 type Grant struct {
 	RoleID  int64  `json:"role_id"`
@@ -128,14 +132,20 @@ func (s *Store) Close() error                   { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 func (s *Store) migrate() error {
+	if err := s.migrateLegacy(); err != nil {
+		return err
+	}
+	return s.migratePublications()
+}
+func (s *Store) migrateLegacy() error {
 	var version int
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 4 {
+	if version > 5 {
 		return errors.New("database schema is newer than this binary")
 	}
-	if version == 4 {
+	if version >= 4 {
 		return nil
 	}
 	if version == 3 {
@@ -333,7 +343,7 @@ func (s *Store) LogoutUser(ctx context.Context, id int64) error {
 }
 
 func (s *Store) Applications(ctx context.Context, userID int64) ([]Application, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.name,a.template,a.enabled,MAX(p.can_launch),MAX(p.can_control),MAX(p.can_print),(SELECT version FROM policy_revision WHERE id=1)
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.name,a.template,a.enabled,a.start_url,a.access_policy,MAX(p.can_launch),MAX(p.can_control),MAX(p.can_print),(SELECT version FROM policy_revision WHERE id=1)
  FROM applications a JOIN role_app_permissions p ON p.app_id=a.id JOIN user_roles ur ON ur.role_id=p.role_id JOIN users u ON u.id=ur.user_id
  WHERE ur.user_id=? AND u.enabled=1 AND a.enabled=1 GROUP BY a.id HAVING MAX(p.can_launch)=1 ORDER BY a.id`, userID)
 	if err != nil {
@@ -343,7 +353,11 @@ func (s *Store) Applications(ctx context.Context, userID int64) ([]Application, 
 	out := []Application{}
 	for rows.Next() {
 		var a Application
-		if err := rows.Scan(&a.ID, &a.Name, &a.Template, &a.Enabled, &a.Launch, &a.Control, &a.Print, &a.PolicyVersion); err != nil {
+		var policy string
+		if err := rows.Scan(&a.ID, &a.Name, &a.Template, &a.Enabled, &a.StartURL, &policy, &a.Launch, &a.Control, &a.Print, &a.PolicyVersion); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(policy), &a.Access); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -437,7 +451,7 @@ func (s *Store) Grants(ctx context.Context) ([]Grant, error) {
 	return out, rows.Err()
 }
 func (s *Store) AllApplications(ctx context.Context) ([]Application, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,name,template,enabled FROM applications ORDER BY id")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,name,template,enabled,start_url,access_policy FROM applications ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +459,11 @@ func (s *Store) AllApplications(ctx context.Context) ([]Application, error) {
 	out := []Application{}
 	for rows.Next() {
 		var a Application
-		if err := rows.Scan(&a.ID, &a.Name, &a.Template, &a.Enabled); err != nil {
+		var policy string
+		if err := rows.Scan(&a.ID, &a.Name, &a.Template, &a.Enabled, &a.StartURL, &policy); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(policy), &a.Access); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

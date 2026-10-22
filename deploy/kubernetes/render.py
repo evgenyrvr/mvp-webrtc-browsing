@@ -26,6 +26,10 @@ def render(c):
         raise ValueError('worker_pod_cidrs required to restrict TURN peers')
     if any(ipaddress.ip_network(a).overlaps(w) for a in app_cidrs for w in worker_nets):
         raise ValueError('application_cidrs must not open access to worker Pod networks')
+    protected = [str(ipaddress.ip_network(v, strict=True)) for v in c['protected_cidrs']]
+    if not protected:
+        raise ValueError('protected_cidrs must include service, node and management networks')
+    denied = list(dict.fromkeys([str(v) for v in worker_nets] + protected + [ip+'/32' for ip in turn_ips]))
     items = []
     def add(kind, name, spec=None, api='v1', **fields):
         obj = dict(apiVersion=api, kind=kind, metadata=dict(name=name, namespace=ns), **fields)
@@ -37,7 +41,7 @@ def render(c):
     add('ServiceAccount', 'mvp1-runner', automountServiceAccountToken=False)
     add('ServiceAccount', 'mvp1-session', automountServiceAccountToken=False,
         imagePullSecrets=[dict(name=c['image_pull_secret'])])
-    add('Role', 'mvp1-runner', api='rbac.authorization.k8s.io/v1', rules=[dict(apiGroups=[''], resources=['pods'], verbs=['get', 'list', 'create', 'delete'])])
+    add('Role', 'mvp1-runner', api='rbac.authorization.k8s.io/v1', rules=[dict(apiGroups=[''], resources=['pods'], verbs=['get', 'list', 'create', 'delete']), dict(apiGroups=['networking.k8s.io'], resources=['networkpolicies'], verbs=['get', 'list', 'create', 'delete'])])
     add('RoleBinding', 'mvp1-runner', api='rbac.authorization.k8s.io/v1',
         subjects=[dict(kind='ServiceAccount', name='mvp1-runner', namespace=ns)],
         roleRef=dict(apiGroup='rbac.authorization.k8s.io', kind='Role', name='mvp1-runner'))
@@ -50,7 +54,7 @@ def render(c):
         return dict(requests=dict(cpu='100m', memory=memory), limits=dict(cpu='500m', memory='256Mi'))
     runner = dict(name='runner', image=c['control_image'], command=['/usr/local/bin/runner'], args=[
         '-backend', 'kubernetes', '-namespace', ns, '-socket', '/run/mvp1/runner.sock', '-image', c['worker_image'], '-image-pull-secret', c['image_pull_secret']],
-        env=turn_env, securityContext=security, resources=resources('64Mi'), volumeMounts=[
+        env=turn_env+[dict(name='MVP_DENIED_CIDRS',value=','.join(denied))], securityContext=security, resources=resources('64Mi'), volumeMounts=[
             dict(name='socket', mountPath='/run/mvp1'), dict(name='api', mountPath='/var/run/secrets/kubernetes.io/serviceaccount', readOnly=True)])
     gateway = dict(name='gateway', image=c['control_image'], command=['/bin/sh', '-ec'], args=[
         'n=0; while [ ! -S /run/mvp1/runner.sock ]; do n=$((n+1)); [ "$n" -lt 100 ] || exit 1; sleep 1; done; exec /usr/local/bin/gateway "$@"',
@@ -112,6 +116,7 @@ def render(c):
         egress=[dict(to=[dict(namespaceSelector=dict(matchLabels={'kubernetes.io/metadata.name':'kube-system'}),podSelector=dict(matchLabels={'k8s-app':'kube-dns'}))],ports=[dict(protocol='UDP',port=53),dict(protocol='TCP',port=53)]),
                 dict(to=peers,ports=[dict(protocol='UDP',port=3478),dict(protocol='TCP',port=3478),dict(protocol='TCP',port=5349),dict(protocol='UDP',port=49160,endPort=49259)])]+
                [dict(to=[dict(ipBlock=dict(cidr=cidr))],ports=[dict(protocol='TCP',port=80),dict(protocol='TCP',port=443)]) for cidr in app_cidrs]),api='networking.k8s.io/v1')
+    add('NetworkPolicy','mvp1-isolated-apps',dict(podSelector=dict(matchLabels={'app.kubernetes.io/component':'isolated-app'}),policyTypes=['Ingress','Egress'],ingress=[],egress=[]),api='networking.k8s.io/v1')
     return dict(apiVersion='v1',kind='List',items=items)
 
 if __name__ == '__main__':

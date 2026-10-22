@@ -180,3 +180,35 @@ TLS и coturn см. [инструкцию Kubernetes](../deploy/kubernetes/READM
 Вход действует один час от аутентификации без продления при работе/refresh.
 После истечения интерфейс требует логин и пароль; API и worker запрещают доступ.
 Старые копии БД, сделанные до миграции, могут содержать открытые пароли.
+
+## Публикации сайтов
+
+В панели администратора заполните «Новая публикация сайта»: например,
+идентификатор `yandex`, название «Яндекс», Firefox, URL `https://ya.ru`, домен
+`ya.ru`, TCP-порт `443`. Дополнительные домены ресурсов/перенаправлений задаются
+отдельно. Затем назначьте запуск/управление/печать роли. Для отдельного пользователя
+выдайте ему отдельную роль с этой публикацией. IP можно указать как `10.1.2.3`
+(форма преобразует его в `/32`) или CIDR. Для частного адреса домена также требуется
+его CIDR. Изменение настроек закрывает активные сеансы этой публикации.
+
+Новые карточки работают через отдельные app и worker. Старые общие карточки
+Falkon/Firefox остаются без правил публикации: снимите их разрешения у пользователей,
+которых требуется ограничить сайтами. Прокси ограничивает сетевые назначения,
+а не URL-пути или содержимое TLS; CONNECT не гарантирует различение сайтов на
+общем IP хостинга при намеренной подмене TLS SNI клиентом.
+
+Для Docker используется internal bridge с `gateway_mode_ipv4=isolated`; локально
+проверяется Docker 29.1.3. При неподдерживаемом режиме запуск не переключается
+на открытую сеть. Оператор может задать `MVP_DENIED_CIDRS` (через запятую) в
+окружении runner, чтобы безусловно запретить сети узлов, управления и сервисов
+даже при широких разрешениях администратора публикации. В Kubernetes список
+формируется renderer из `protected_cidrs`, Pod CIDR и TURN IP.
+
+Проверка новой реализации в изолированной тестовой БД/образе:
+
+```sh
+CGO_ENABLED=0 ./tools/go.sh build -trimpath -o bin/session-worker ./cmd/session-worker
+docker build -t mvp1-worker:publications-testing -f deploy/worker/Dockerfile .
+MVP_PUBLICATION_DOCKER_TEST=1 ./tools/go.sh test -count=1 -run TestDockerPublication ./internal/runner
+MVP_PUBLICATION_TEST=1 MVP_BROWSER_KIND=firefox MVP_BROWSER_APP=falkon MVP_BROWSER_LAN_IP=YOUR_LAN_IP MVP_WORKER_IMAGE=mvp1-worker:publications-testing ./testing/browser-check.sh
+```

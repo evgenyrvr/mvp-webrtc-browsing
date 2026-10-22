@@ -71,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/admin/users", s.auth(true, s.saveUser))
 	mux.HandleFunc("PUT /api/v1/admin/roles", s.auth(true, s.saveRole))
 	mux.HandleFunc("PUT /api/v1/admin/grants", s.auth(true, s.saveGrant))
+	mux.HandleFunc("PUT /api/v1/admin/publications/{id}", s.auth(true, s.savePublication))
 	mux.HandleFunc("PUT /api/v1/admin/applications/{id}", s.auth(true, s.saveApplication))
 	mux.HandleFunc("DELETE /api/v1/admin/sessions/{id}", s.auth(true, func(w http.ResponseWriter, r *http.Request, v store.Identity) {
 		respond(w, map[string]bool{"ok": true}, s.Sessions.Stop(r.Context(), r.PathValue("id"), v.User.ID, true))
@@ -301,4 +302,16 @@ func fail(w http.ResponseWriter, err error) {
 		slog.Error("request failed", "error", err)
 	}
 	write(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func (s *Server) savePublication(w http.ResponseWriter, r *http.Request, v store.Identity) {
+	var a store.Application
+	if !decode(w, r, &a) {
+		return
+	}
+	a.ID = r.PathValue("id")
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 45*time.Second)
+	defer cancel()
+	err := s.Sessions.SavePublication(ctx, a)
+	respond(w, map[string]bool{"ok": true}, err)
 }

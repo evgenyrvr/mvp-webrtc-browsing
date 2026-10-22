@@ -220,7 +220,7 @@ func TestBrowserVideo(t *testing.T) {
 	// rendering, input, print reception and takeover still run in the browser.
 	var provision func(string) string
 	var finish func(string)
-	if os.Getenv("MVP_BROWSER_KIND") != "firefox" {
+	if os.Getenv("MVP_BROWSER_KIND") != "firefox" || os.Getenv("MVP_PUBLICATION_TEST") == "1" {
 		jar, err := cookiejar.New(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -283,11 +283,37 @@ func TestBrowserVideo(t *testing.T) {
 	if browserApp != "firefox" && browserApp != "falkon" {
 		t.Fatal("invalid browser application")
 	}
+	publicationID := ""
+	if os.Getenv("MVP_PUBLICATION_TEST") == "1" {
+		target, host, hits := publicationTarget(t, ctx, network)
+		_, targetPort, _ := net.SplitHostPort(strings.TrimPrefix(target, "http://"))
+		n, _ := strconv.Atoi(targetPort)
+		publicationID = "site-" + browserApp
+		settings, _ := json.Marshal(map[string]any{"name": "Корпоративный сайт", "template": browserApp, "start_url": target, "enabled": true, "access": map[string]any{"domains": []string{}, "cidrs": []string{host + "/32"}, "ports": []int{n}}})
+		result := eval(fmt.Sprintf(`fetch('/api/v1/admin/publications/%s',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':window.testCSRF},body:JSON.stringify(%s)}).then(async r=>({status:r.status,body:await r.json()}))`, publicationID, settings))
+		if !strings.Contains(string(result), `"status":200`) {
+			t.Fatalf("save publication: %s", result)
+		}
+		result = eval(fmt.Sprintf(`fetch('/api/v1/admin/grants',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':window.testCSRF},body:JSON.stringify({role_id:1,application_id:%q,can_launch:true,can_control:true,can_print:true})}).then(r=>r.status)`, publicationID))
+		if !strings.Contains(string(result), "200") {
+			t.Fatalf("grant publication: %s", result)
+		}
+		t.Cleanup(func() {
+			if hits.Load() == 0 {
+				t.Error("published browser never fetched the start page through proxy")
+			}
+		})
+	}
 	for _, app := range []string{browserApp, "terminal"} {
+		launchID := app
+		if app == browserApp && publicationID != "" {
+			launchID = publicationID
+		}
+
 		if provision != nil {
-			eval(fmt.Sprintf("window.testID=%q", provision(app)))
+			eval(fmt.Sprintf("window.testID=%q", provision(launchID)))
 		} else {
-			t.Logf("launch %s: %s", app, eval(fmt.Sprintf(`fetch('/api/v1/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':window.testCSRF},body:JSON.stringify({application_id:%q})}).then(r=>r.json()).then(v=>{window.testID=v.id;return v})`, app)))
+			t.Logf("launch %s: %s", app, eval(fmt.Sprintf(`fetch('/api/v1/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':window.testCSRF},body:JSON.stringify({application_id:%q})}).then(r=>r.json()).then(v=>{window.testID=v.id;return v})`, launchID)))
 		}
 		idResult := eval(`window.testID`)
 		var launched struct {
@@ -297,6 +323,10 @@ func TestBrowserVideo(t *testing.T) {
 		}
 		if err := json.Unmarshal(idResult, &launched); err != nil {
 			t.Fatal(err)
+		}
+		appContainer := "mvp1-browser-" + launched.Result.Value
+		if app == browserApp && publicationID != "" {
+			appContainer += "-app"
 		}
 		if len(launched.Result.Value) == 64 {
 			start("docker", nil, "logs", "--follow", "mvp1-browser-"+launched.Result.Value)
@@ -382,7 +412,7 @@ func TestBrowserVideo(t *testing.T) {
 			if os.Getenv("MVP_PRINT_DIALOG_TEST") == "1" {
 				eval(`(()=>{const stage=document.getElementById('remote-stage');stage.focus();for(const [type,code] of [['keydown','ControlLeft'],['keydown','KeyP'],['keyup','KeyP'],['keyup','ControlLeft']])stage.dispatchEvent(new KeyboardEvent(type,{code,bubbles:true,cancelable:true}));})()`)
 				time.Sleep(4 * time.Second)
-				shot, err := exec.CommandContext(ctx, "docker", "exec", "mvp1-browser-"+launched.Result.Value, "ffmpeg", "-loglevel", "error", "-f", "x11grab", "-video_size", "1280x720", "-i", ":99", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-").Output()
+				shot, err := exec.CommandContext(ctx, "docker", "exec", appContainer, "ffmpeg", "-loglevel", "error", "-f", "x11grab", "-video_size", "1280x720", "-i", ":99", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-").Output()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -405,7 +435,7 @@ func TestBrowserVideo(t *testing.T) {
 				} else {
 					eval(`(()=>{const dc=window.testPeers.at(-1).testChannels.control;for(const down of [true,false])dc.send(JSON.stringify({v:1,type:'button',button:0,down,x:1143/1280,y:697/720}));})()`)
 					time.Sleep(3 * time.Second)
-					shot, err = exec.CommandContext(ctx, "docker", "exec", "mvp1-browser-"+launched.Result.Value, "ffmpeg", "-loglevel", "error", "-f", "x11grab", "-video_size", "1280x720", "-i", ":99", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-").Output()
+					shot, err = exec.CommandContext(ctx, "docker", "exec", appContainer, "ffmpeg", "-loglevel", "error", "-f", "x11grab", "-video_size", "1280x720", "-i", ":99", "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-").Output()
 					if err == nil {
 						_ = os.WriteFile("/tmp/mvp1-print-after.png", shot, 0600)
 					}
@@ -430,7 +460,7 @@ func TestBrowserVideo(t *testing.T) {
 			var httpRequest bytes.Buffer
 			fmt.Fprintf(&httpRequest, "POST /printers/local HTTP/1.1\r\nHost: 127.0.0.1:8631\r\nContent-Type: application/ipp\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", body.Len())
 			httpRequest.Write(body.Bytes())
-			command := exec.CommandContext(ctx, "docker", "exec", "-i", "--user", "1000:1000", "mvp1-browser-"+launched.Result.Value, "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8631; cat >&3; cat <&3")
+			command := exec.CommandContext(ctx, "docker", "exec", "-i", "--user", "1000:1000", appContainer, "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8631; cat >&3; cat <&3")
 			command.Stdin = &httpRequest
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("IPP submission: %v %s", err, output)
