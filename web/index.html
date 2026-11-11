@@ -29,7 +29,7 @@
         <button id="catalog-tab" class="tab active"><span aria-hidden="true">▦</span> Мои приложения</button>
         <a class="nav-link" href="/#active-apps"><span aria-hidden="true">◷</span> Активные сеансы</a>
         <button id="admin-tab" class="tab" hidden><span aria-hidden="true">⚙</span> Администрирование</button>
-        <div class="sidebar-note"><span class="eyebrow">ВАШЕ ПРОСТРАНСТВО</span><p>До двух приложений одновременно.<br>Каждое — в отдельной вкладке.<br>Сеанс завершается через 30 минут.</p></div>
+        <div class="sidebar-note"><span class="eyebrow">ВАШЕ ПРОСТРАНСТВО</span><p>До двух приложений одновременно.<br>Переключайтесь между ними в рабочей области.<br>Сеанс завершается через 30 минут.</p></div>
       </nav>
       <div id="catalog-view">
         <div class="section-heading"><div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h1>Мои приложения</h1><p class="muted">Откройте до двух приложений одновременно. Через 30 минут каждое приложение автоматически закроется.</p></div><button id="refresh" class="secondary">Обновить</button></div>
@@ -40,10 +40,10 @@
       <div id="admin-view" hidden>
         <p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Администрирование</h1><p class="muted">Назначайте пользователям роли и определяйте доступные приложения.</p>
         <div class="admin-grid">
-          <form id="user-form" class="panel"><h2 id="user-form-title">Новый пользователь</h2><input name="id" type="hidden" value="0"><label>Логин<input name="login" required maxlength="80" autocomplete="off"></label><label>Пароль<input name="password" type="password" maxlength="1024" autocomplete="new-password"><small>При редактировании оставьте пустым, чтобы сохранить пароль.</small></label><label class="check"><input name="enabled" type="checkbox" checked> Учётная запись активна</label><fieldset><legend>Роли</legend><div id="user-roles"></div></fieldset><div class="actions"><button type="submit">Сохранить пользователя</button><button id="reset-user" type="button" class="secondary">Сбросить</button></div></form>
-          <div class="panel"><h2>Пользователи</h2><div id="users-list"></div></div>
-          <form id="role-form" class="panel"><h2>Роли</h2><div id="roles-list"></div><label>Название новой роли<input name="name" required maxlength="80"></label><label class="check"><input name="admin" type="checkbox"> Право администрирования</label><button type="submit">Добавить роль</button></form>
-          <form id="grant-form" class="panel"><h2>Разрешения роли</h2><label>Роль<select name="role_id" id="grant-role"></select></label><label>Приложение<select name="application_id" id="grant-app"></select></label><label class="check"><input name="can_launch" type="checkbox"> Запуск</label><label class="check"><input name="can_control" type="checkbox"> Управление</label><label class="check"><input name="can_print" type="checkbox"> Печать</label><button type="submit">Сохранить доступ</button></form>
+          <form id="user-form" class="panel"><h2 id="user-form-title">Новый пользователь</h2><input name="id" type="hidden" value="0"><label>Логин<input name="login" required maxlength="80" autocomplete="off"></label><label>Пароль<input name="password" type="password" maxlength="1024" autocomplete="new-password"><small>При редактировании оставьте пустым, чтобы сохранить пароль.</small></label><label class="check"><input name="enabled" type="checkbox" checked> Учётная запись активна</label><fieldset><legend>Роли</legend><details id="user-role-picker"><summary>Выбрать роли <span id="user-role-count"></span></summary><label>Поиск роли<input id="user-role-search" type="search" placeholder="Часть названия"></label><div id="user-roles" class="role-options"></div></details></fieldset><div class="actions"><button type="submit">Сохранить пользователя</button><button id="reset-user" type="button" class="secondary">Сбросить</button></div></form>
+          <div class="panel"><h2>Пользователи</h2><div class="admin-filter"><label>Поиск<input id="users-search" type="search" placeholder="Часть логина или названия роли"></label><label>Фильтр<select id="users-status"><option value="">Все</option><option value="true">Незаблокированные</option><option value="false">Заблокированные</option></select></label></div><label>Пользователь<select id="users-select"></select></label><small id="users-count" role="status"></small><div id="users-list"></div></div>
+          <form id="role-form" class="panel"><h2>Роли</h2><div class="admin-filter"><label>Поиск<input id="roles-search" type="search" placeholder="Часть названия роли"></label><label>Фильтр<select id="roles-status"><option value="">Все</option><option value="true">Администраторские</option><option value="false">Обычные</option></select></label></div><label>Роль<select id="roles-select"></select></label><small id="roles-count" role="status"></small><div id="roles-list"></div><label>Название новой роли<input name="name" required maxlength="80"></label><label class="check"><input name="admin" type="checkbox"> Право администрирования</label><button type="submit">Добавить роль</button></form>
+          <form id="grant-form" class="panel"><h2>Разрешения роли</h2><label>Поиск роли<input id="grant-role-search" type="search"></label><label>Роль<select name="role_id" id="grant-role"></select></label><label>Поиск приложения<input id="grant-app-search" type="search"></label><label>Приложение<select name="application_id" id="grant-app"></select></label><label class="check"><input name="can_launch" type="checkbox"> Запуск</label><label class="check"><input name="can_control" type="checkbox"> Управление</label><label class="check"><input name="can_print" type="checkbox"> Печать</label><button type="submit">Сохранить доступ</button></form>
         </div>
         <form id="publication-form" class="panel"><h2 id="publication-form-title">Новая публикация сайта</h2>
 <label>Идентификатор<input name="id" required pattern="[a-z0-9-]{1,64}" maxlength="64" placeholder="yandex"></label>
@@ -56,17 +56,21 @@
 <label class="check"><input name="enabled" type="checkbox" checked> Опубликовано</label>
 <p class="muted">Списки через запятую. Поддомены задаются отдельно: *.dion.vc не включает dion.vc. Для внутренних адресов укажите CIDR. После сохранения назначьте доступ роли. Изменение публикации завершит её активные сеансы.</p>
 <div class="actions"><button type="submit">Сохранить публикацию</button><button id="reset-publication" type="button" class="secondary">Новая публикация</button></div></form>
-<section class="panel"><h2>Публикации</h2><div id="publications"></div></section>
+<section class="panel"><h2>Публикации</h2><div class="admin-filter"><label>Поиск<input id="publications-search" type="search" placeholder="Название, адрес или браузер"></label><label>Фильтр<select id="publications-status"><option value="">Все</option><option value="true">Опубликованные</option><option value="false">Отключённые</option></select></label></div><label>Профиль публикации<select id="publications-select"></select></label><small id="publications-count" role="status"></small><div id="publications"></div></section>
         <section class="panel session-panel"><h2>Все активные сеансы</h2><div id="admin-sessions"></div></section>
       </div>
     </section>
+    <section id="desktop-view" hidden aria-label="Рабочая область приложений">
+      <div class="desktop-bar"><button id="desktop-catalog" class="secondary">← Приложения</button><nav id="session-tabs" aria-label="Запущенные приложения"></nav><span class="desktop-limit">До 30 минут на сеанс</span></div>
+      <div id="session-frames"></div>
+    </section>
     <section id="session-view" class="panel" hidden>
-      <div class="section-heading"><a href="/">← К приложениям</a><div class="actions"><button id="reconnect-app" class="secondary">Переподключить</button><button id="stop-app" class="secondary">Завершить приложение</button></div></div>
-      <h1 id="session-title">Приложение</h1><p class="muted">Сеанс ограничен 30 минутами с момента запуска. Сохраните результат работы до автоматического закрытия. Затем приложение можно запустить заново.</p><p id="session-state" role="status"></p>
+      <div class="section-heading"><a id="stream-catalog" href="/">← К приложениям</a><div class="actions"><button id="reconnect-app" class="secondary">Переподключить</button><button id="stop-app" class="secondary">Завершить приложение</button></div></div>
+      <h1 id="session-title">Приложение</h1><p class="muted session-help">Сеанс ограничен 30 минутами с момента запуска. Сохраните результат работы до автоматического закрытия. Затем приложение можно запустить заново.</p><p id="session-state" role="status"></p>
       <div class="actions remote-toolbar"><button id="layout-us" class="secondary">EN</button><button id="layout-ru" class="secondary">RU</button><button id="remote-address" class="secondary">Адресная строка</button><button id="remote-fullscreen" class="secondary">На весь экран</button></div>
       <div id="print-documents" aria-live="polite"></div>
       <div id="remote-stage" class="remote-stage" tabindex="0" aria-label="Удалённое приложение. Нажмите для управления клавиатурой"><video id="remote-video" autoplay playsinline muted></video></div>
-      <p class="muted">Нажмите на изображение для ввода. EN / RU переключают раскладку серверного приложения. Часть сочетаний клавиш может обрабатываться вашей ОС.</p>
+      <p class="muted session-help">Нажмите на изображение для ввода. EN / RU переключают раскладку серверного приложения. Часть сочетаний клавиш может обрабатываться вашей ОС.</p>
     </section>
   </main>
   <footer>DION · Рабочее пространство</footer>

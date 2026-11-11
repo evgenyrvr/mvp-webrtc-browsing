@@ -119,7 +119,7 @@ func testTwoUsers(t *testing.T, ctx context.Context, dir, origin string, start f
 			c.call("Page.navigate", map[string]any{"url": origin})
 			wait(func() bool { return decode(c.eval("document.readyState")) == "complete" })
 			c.eval(`window.multiPeers=[];window.RTCPeerConnection=class extends RTCPeerConnection{constructor(...args){super(...args);window.multiPeers.push(this)}}`)
-			c.eval(fmt.Sprintf(`history.pushState({},'', '/sessions/'+%q);refreshIdentity()`, id))
+			c.eval(fmt.Sprintf(`history.pushState({},'', '/sessions/'+%q+'?embedded=1');refreshIdentity()`, id))
 			tab := &appTab{client: c, handle: window.Handle, id: id}
 			tabs = append(tabs, tab)
 			wait(func() bool {

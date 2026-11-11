@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && groupadd -g 1000 app && useradd -u 1000 -g app -m -s /bin/bash app
 COPY bin/session-worker /usr/local/bin/session-worker
 COPY deploy/worker/openbox.xml deploy/worker/welcome.html /opt/mvp1/
+COPY deploy/worker/firefox-policies.json /usr/lib/firefox-esr/distribution/policies.json
 ENV HOME=/home/app DISPLAY=:99
 USER 0:0
 EXPOSE 8081

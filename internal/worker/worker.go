@@ -398,7 +398,7 @@ func (w *Worker) updatePolicy(v wire.Lease) {
 
 func FFmpegCapture(display string) Capture {
 	return func(ctx context.Context, track *webrtc.TrackLocalStaticSample) error {
-		cmd := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-loglevel", "error", "-f", "x11grab", "-draw_mouse", "1", "-framerate", "20", "-video_size", "1280x720", "-i", display, "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-threads", "2", "-b:v", "1800k", "-maxrate", "2400k", "-bufsize", "1200k", "-g", "20", "-lag-in-frames", "0", "-f", "ivf", "pipe:1")
+		cmd := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-loglevel", "error", "-f", "x11grab", "-draw_mouse", "0", "-framerate", "20", "-video_size", "1280x720", "-i", display, "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-threads", "2", "-b:v", "1800k", "-maxrate", "2400k", "-bufsize", "1200k", "-g", "20", "-lag-in-frames", "0", "-f", "ivf", "pipe:1")
 		pipe, err := cmd.StdoutPipe()
 		if err != nil {
 			return err

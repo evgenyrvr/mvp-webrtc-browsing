@@ -209,3 +209,65 @@ func TestLifetimeClosesEveryApplicationAndAllowsNewLaunch(t *testing.T) {
 		})
 	}
 }
+
+type cancelLaunchRuntime struct {
+	cancel context.CancelFunc
+}
+
+func (*cancelLaunchRuntime) Available() bool { return true }
+func (r *cancelLaunchRuntime) Start(ctx context.Context, _ store.Session, _ store.Application) error {
+	r.cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		return errors.New("launch must have a deadline")
+	}
+	return ctx.Err()
+}
+func (*cancelLaunchRuntime) Stop(context.Context, string) error { return nil }
+func TestReservedLaunchSurvivesHTTPDisconnect(t *testing.T) {
+	db, _, _ := fixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service := New(db, &cancelLaunchRuntime{cancel: cancel})
+	session, err := service.Launch(ctx, 1, "firefox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := db.Session(context.Background(), session.ID)
+	if err != nil || stored.State != "ready" {
+		t.Fatalf("reserved launch lost on disconnect: %+v %v", stored, err)
+	}
+	list, err := db.Sessions(context.Background(), 1)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("expected exactly one recoverable session: %+v %v", list, err)
+	}
+}
+
+type cancelStopRuntime struct {
+	fakeRuntime
+	cancel context.CancelFunc
+}
+
+func (r *cancelStopRuntime) Stop(ctx context.Context, _ string) error {
+	r.cancel()
+	if _, ok := ctx.Deadline(); !ok {
+		return errors.New("cleanup must have a deadline")
+	}
+	return ctx.Err()
+}
+func TestAuthorizedStopSurvivesHTTPDisconnect(t *testing.T) {
+	db, _, _ := fixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service := New(db, &cancelStopRuntime{cancel: cancel})
+	session, err := service.Launch(context.Background(), 1, "terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Stop(ctx, session.ID, 1, false); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := db.Session(context.Background(), session.ID)
+	if err != nil || stored.State != "closed" {
+		t.Fatalf("cleanup lost after disconnect: %+v %v", stored, err)
+	}
+}

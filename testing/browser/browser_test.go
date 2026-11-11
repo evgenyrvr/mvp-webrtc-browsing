@@ -215,12 +215,16 @@ func TestBrowserVideo(t *testing.T) {
 	wait(func() bool { return strings.Contains(string(eval("document.readyState")), "complete") })
 	t.Logf("login: %s", eval(`fetch('/api/v1/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:'browser-test',password:'temporary-browser-test'})}).then(r=>r.json()).then(v=>{window.testCSRF=v.csrf_token;return !!v.csrf_token})`))
 	eval(`window.testPDFs=[];const makeURL=URL.createObjectURL.bind(URL);URL.createObjectURL=b=>{window.testPDFs.push(b);return makeURL(b)};window.testPeers=[];window.testEvents=[];new MutationObserver(()=>window.testEvents.push(['status',document.getElementById('session-state').textContent])).observe(document.getElementById('session-state'),{childList:true});window.RTCPeerConnection=class extends RTCPeerConnection {createDataChannel(...args){const dc=super.createDataChannel(...args);(this.testChannels ||= {})[args[0]]=dc;return dc;}constructor(...args){super(...args);window.testPeers.push(this);this.addEventListener('icecandidate',e=>window.testEvents.push(['candidate',e.candidate?.candidate]));for(const name of ['icegatheringstatechange','iceconnectionstatechange','connectionstatechange'])this.addEventListener(name,()=>window.testEvents.push([name,this.iceGatheringState,this.iceConnectionState,this.connectionState]));}};window.WebSocket=class extends WebSocket{constructor(...args){super(...args);this.addEventListener('message',e=>{try{const v=JSON.parse(e.data);window.testEvents.push(['ws',v.type,v.message||'',v.sdp?.sdp?.split('\r\n').filter(l=>l.startsWith('a=candidate:'))])}catch(_){}});this.addEventListener('close',e=>window.testEvents.push(['close',e.code]));}}`)
+	if os.Getenv("MVP_DESKTOP_TEST") != "" {
+		testDesktop(t, ctx, eval)
+		return
+	}
 	// Docker interface changes invalidate an in-flight Chromium fetch on this host.
 	// Use a separate authenticated HTTP client for provisioning only; WebRTC,
 	// rendering, input, print reception and takeover still run in the browser.
 	var provision func(string) string
 	var finish func(string)
-	if os.Getenv("MVP_BROWSER_KIND") != "firefox" || os.Getenv("MVP_PUBLICATION_TEST") == "1" {
+	if (os.Getenv("MVP_BROWSER_KIND") != "firefox" || os.Getenv("MVP_PUBLICATION_TEST") == "1") && os.Getenv("MVP_BROWSER_LAUNCH_TEST") != "1" {
 		jar, err := cookiejar.New(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -312,6 +316,8 @@ func TestBrowserVideo(t *testing.T) {
 
 		if provision != nil {
 			eval(fmt.Sprintf("window.testID=%q", provision(launchID)))
+		} else if os.Getenv("MVP_BROWSER_LAUNCH_TEST") == "1" {
+			t.Logf("browser launch %s: %s", app, eval(fmt.Sprintf(`refreshIdentity().then(()=>launchApplication(%q)).then(v=>{window.testID=v.id;return v})`, launchID)))
 		} else {
 			t.Logf("launch %s: %s", app, eval(fmt.Sprintf(`fetch('/api/v1/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':window.testCSRF},body:JSON.stringify({application_id:%q})}).then(r=>r.json()).then(v=>{window.testID=v.id;return v})`, launchID)))
 		}
@@ -331,7 +337,7 @@ func TestBrowserVideo(t *testing.T) {
 		if len(launched.Result.Value) == 64 {
 			start("docker", nil, "logs", "--follow", "mvp1-browser-"+launched.Result.Value)
 		}
-		eval(`history.pushState({},'', '/sessions/'+window.testID); refreshIdentity()`)
+		eval(`history.pushState({},'', '/sessions/'+window.testID+'?embedded=1'); refreshIdentity()`)
 		result := eval(`new Promise(resolve=>{let n=0;const timer=setInterval(async()=>{const v=document.getElementById('remote-video');let frames=0;const pc=window.testPeers.at(-1);if(pc&&pc.connectionState!=='closed'){const stats=await pc.getStats();stats.forEach(s=>{if(s.type==='inbound-rtp'&&s.kind==='video')frames+=s.framesDecoded||0})}if(frames>10||++n>=40){clearInterval(timer);let brightPixels=0;if(v.videoWidth){const c=document.createElement('canvas');c.width=160;c.height=90;const x=c.getContext('2d');x.drawImage(v,0,0,160,90);const pixels=x.getImageData(0,0,160,90).data;for(let i=0;i<pixels.length;i+=4)if(pixels[i]+pixels[i+1]+pixels[i+2]>150)brightPixels++;}resolve({frames,brightPixels,width:v.videoWidth,height:v.videoHeight,state:document.getElementById('session-state').textContent,message:document.getElementById('message').textContent})}},500)})`)
 		t.Logf("%s video: %s", app, result)
 		var decoded struct {

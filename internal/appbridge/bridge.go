@@ -26,7 +26,7 @@ type Input interface {
 }
 
 func Command(ctx context.Context) *exec.Cmd {
-	return exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-loglevel", "error", "-f", "x11grab", "-draw_mouse", "1", "-framerate", "20", "-video_size", "1280x720", "-i", ":99", "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-threads", "2", "-b:v", "1800k", "-maxrate", "2400k", "-bufsize", "1200k", "-g", "20", "-lag-in-frames", "0", "-f", "ivf", "pipe:1")
+	return exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-loglevel", "error", "-f", "x11grab", "-draw_mouse", "0", "-framerate", "20", "-video_size", "1280x720", "-i", ":99", "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-threads", "2", "-b:v", "1800k", "-maxrate", "2400k", "-bufsize", "1200k", "-g", "20", "-lag-in-frames", "0", "-f", "ivf", "pipe:1")
 }
 func Handler(token string, input Input) http.Handler {
 	mux := http.NewServeMux()

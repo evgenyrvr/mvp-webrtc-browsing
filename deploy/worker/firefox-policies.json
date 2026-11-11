@@ -1,0 +1,12 @@
+{
+  "policies": {
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "Preferences": {
+      "datareporting.policy.firstRunURL": {
+        "Value": "",
+        "Status": "locked"
+      }
+    }
+  }
+}

@@ -106,7 +106,7 @@
         return;
       }
       if (event.code === 4002) {
-        close(); status('Приложение завершено. Вернитесь в каталог и запустите его снова.');
+        close(); if (window.parent !== window) parent.postMessage({type:'mvp-session-ended'}, location.origin); status('Приложение завершено. Вернитесь в каталог и запустите его снова.');
         return;
       }
       reconnect('Связь с сервером потеряна, пробуем восстановить…');
@@ -129,6 +129,9 @@
   stage.addEventListener('blur', reset); window.addEventListener('blur', reset);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
   window.addEventListener('pagehide', close);
+  window.addEventListener('message', event => {
+    if (event.origin === location.origin && event.source === window.parent && event.data?.type === 'mvp-background') { reset(); stage.blur(); }
+  });
   document.getElementById('layout-us').onclick = () => chooseLayout('us');
   document.getElementById('layout-ru').onclick = () => chooseLayout('ru');
   document.getElementById('remote-address').onclick = () => { stage.focus(); for (const [code, down] of [['ControlLeft', true], ['KeyL', true], ['KeyL', false], ['ControlLeft', false]]) send(control, { type: 'key', code, down }); };

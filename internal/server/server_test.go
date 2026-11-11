@@ -185,3 +185,17 @@ func TestCommittedRevocationSurvivesRequestCancellation(t *testing.T) {
 		t.Fatal("committed revocation did not clean runtime")
 	}
 }
+
+func TestEmbeddedSessionFramingPolicy(t *testing.T) {
+	h, _ := fixture(t)
+	for _, path := range []string{"/", "/sessions/test", "/sessions/test?embedded=1"} {
+		w := req(h, "GET", path, "", nil, "", "")
+		expected := "frame-ancestors 'none'"
+		if strings.HasSuffix(path, "?embedded=1") {
+			expected = "frame-ancestors 'self'"
+		}
+		if !strings.Contains(w.Header().Get("Content-Security-Policy"), expected) {
+			t.Fatalf("%s: %s", path, w.Header().Get("Content-Security-Policy"))
+		}
+	}
+}

@@ -55,12 +55,15 @@ func (s *Service) Launch(ctx context.Context, user int64, app string) (store.Ses
 	if err != nil {
 		return v, err
 	}
-	start, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Once reserved, finish the bounded launch even if Chromium cancels its
+	// request when Docker adds a network interface. The client can recover it
+	// through the authenticated session list without sending another POST.
+	start, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 	if err = s.runtime.Start(start, v, a); err != nil {
 		return v, errors.Join(err, s.cleanupFailedLaunch(v.ID, "failed"))
 	}
-	if err = s.store.State(ctx, v.ID, "ready"); err != nil {
+	if err = s.store.State(start, v.ID, "ready"); err != nil {
 		return v, errors.Join(err, s.cleanupFailedLaunch(v.ID, "closed"))
 	}
 	v.State = "ready"
@@ -92,7 +95,11 @@ func (s *Service) Stop(ctx context.Context, id string, user int64, admin bool) e
 	if v.UserID != user && !admin {
 		return store.ErrNotFound
 	}
-	return s.stop(ctx, v)
+	// Container removal can also interrupt Chromium's HTTP connection.
+	// Complete the authorized cleanup independently, with a fixed deadline.
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
+	return s.stop(cleanup, v)
 }
 func (s *Service) stop(ctx context.Context, v store.Session) error {
 	if v.State == "closed" || v.State == "failed" {
