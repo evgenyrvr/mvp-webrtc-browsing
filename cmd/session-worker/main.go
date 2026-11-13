@@ -109,10 +109,23 @@ waitDisplay:
 		}
 	}
 	defer keyboard.Close()
-	if err := launch("openbox", "--config-file", "/opt/mvp1/openbox.xml"); err != nil {
+	// Openbox falls back to an unrestricted desktop when it cannot read its
+	// config. Fail closed instead of exposing application launchers.
+	for _, path := range []string{"/opt/mvp1/openbox.xml", "/opt/mvp1/menu.xml"} {
+		check := exec.CommandContext(ctx, "/usr/bin/test", "-r", path)
+		check.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
+		if err := check.Run(); err != nil {
+			return fmt.Errorf("restricted window manager configuration unavailable: %s: %w", path, err)
+		}
+	}
+	if err := launch("openbox", "--sm-disable", "--config-file", "/opt/mvp1/openbox.xml"); err != nil {
 		return err
 	}
 	startURL := "file:///opt/mvp1/welcome.html"
+	// Every session has a fresh profile. Disable reporting and its first-run
+	// notification instead of allowing Firefox to create an extra privacy tab.
+	settings := "user_pref(\"datareporting.policy.dataSubmissionEnabled\", false);\nuser_pref(\"datareporting.policy.firstRunURL\", \"\");\nuser_pref(\"browser.aboutwelcome.enabled\", false);\nuser_pref(\"browser.tabs.inTitlebar\", 0);\n"
+
 	if os.Getenv("MVP_MODE") == "app" {
 		startURL = os.Getenv("MVP_START_URL")
 		proxy, err := url.Parse(os.Getenv("MVP_PROXY"))
@@ -120,14 +133,7 @@ waitDisplay:
 			return errors.New("invalid proxy")
 		}
 		// Configure Firefox explicitly; QtWebEngine receives proxy flags in its clean environment.
-		settings := fmt.Sprintf("user_pref(\"network.proxy.type\", 1);\nuser_pref(\"network.proxy.http\", %q);\nuser_pref(\"network.proxy.http_port\", 8082);\nuser_pref(\"network.proxy.ssl\", %q);\nuser_pref(\"network.proxy.ssl_port\", 8082);\nuser_pref(\"network.proxy.no_proxies_on\", \"\");\nuser_pref(\"network.proxy.allow_hijacking_localhost\", true);\nuser_pref(\"network.trr.mode\", 5);\n", proxy.Hostname(), proxy.Hostname())
-		prefs := exec.CommandContext(ctx, "tee", "/home/app/profile/user.js")
-		prefs.Env = []string{"PATH=/usr/bin:/bin"}
-		prefs.Stdin = strings.NewReader(settings)
-		prefs.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
-		if err := prefs.Run(); err != nil {
-			return err
-		}
+		settings += fmt.Sprintf("user_pref(\"network.proxy.type\", 1);\nuser_pref(\"network.proxy.http\", %q);\nuser_pref(\"network.proxy.http_port\", 8082);\nuser_pref(\"network.proxy.ssl\", %q);\nuser_pref(\"network.proxy.ssl_port\", 8082);\nuser_pref(\"network.proxy.no_proxies_on\", \"\");\nuser_pref(\"network.proxy.allow_hijacking_localhost\", true);\nuser_pref(\"network.trr.mode\", 5);\n", proxy.Hostname(), proxy.Hostname())
 		until := time.Now().Add(15 * time.Second)
 		for {
 			conn, e := net.DialTimeout("tcp", proxy.Host, time.Second)
@@ -141,6 +147,15 @@ waitDisplay:
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+	if app == "firefox" {
+		prefs := exec.CommandContext(ctx, "tee", "/home/app/profile/user.js")
+		prefs.Env = []string{"PATH=/usr/bin:/bin"}
+		prefs.Stdin = strings.NewReader(settings)
+		prefs.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: []uint32{1000}}}
+		if err := prefs.Run(); err != nil {
+			return err
+		}
+	}
 	if app == "falkon" {
 		if err := launch("falkon", "--no-remote", "--profile", "mvp1", startURL); err != nil {
 			return err
@@ -150,7 +165,7 @@ waitDisplay:
 			return err
 		}
 	} else {
-		if err := launch("xterm", "-fa", "DejaVu Sans Mono", "-fs", "14", "-geometry", "120x40", "-e", "/bin/bash"); err != nil {
+		if err := launch("xterm", "-fa", "DejaVu Sans Mono", "-fs", "14", "-geometry", "100x28", "-e", "/bin/bash"); err != nil {
 			return err
 		}
 	}

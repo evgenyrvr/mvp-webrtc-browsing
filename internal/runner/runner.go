@@ -30,6 +30,7 @@ var sessionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var namespacePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,30}$`)
 
 type Config struct {
+	DockerDNS       []string
 	DeniedCIDRs     string
 	BrowserCPUs     float64
 	Backend         string
@@ -57,6 +58,12 @@ type Runner struct {
 }
 
 func New(cfg Config) (*Runner, error) {
+	for _, address := range cfg.DockerDNS {
+		if net.ParseIP(address) == nil {
+			return nil, errors.New("invalid Docker DNS address")
+		}
+	}
+
 	if !namespacePattern.MatchString(cfg.Namespace) || cfg.Image == "" {
 		return nil, errors.New("invalid runner configuration")
 	}
@@ -209,6 +216,7 @@ func (r *Runner) Start(ctx context.Context, v wire.Start) error {
 			cpus = strconv.FormatFloat(r.config.BrowserCPUs, 'f', -1, 64)
 		}
 		args := []string{"run", "--detach", "--rm", "--init", "--name", w.name, "--label", "mvp1.namespace=" + r.config.Namespace, "--network", r.config.Network, "--read-only", "--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID", "--cap-add=KILL", "--security-opt=no-new-privileges", "--pids-limit=" + pidsLimit, "--memory=1g", "--cpus=" + cpus, "--shm-size=256m", "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m", "--tmpfs", "/home/app:rw,nosuid,nodev,size=256m,uid=1000,gid=1000", "-p", "127.0.0.1::8081/tcp", "-p", port + ":" + port + "/udp", "-e", "MVP_WORKER_TOKEN", "-e", "MVP_ICE_SERVERS", "-e", "MVP_APP=" + v.Template, "-e", "MVP_UDP_PORT=" + port, "-e", "MVP_PUBLIC_IP=" + publicIP, r.config.Image}
+		args = r.withDockerDNS(args)
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		credentials, _ := json.Marshal(turn.Credentials(r.config.TURNURL, r.config.TURNSecret, v.ID, time.Now()))
 		cmd.Env = append(os.Environ(), "MVP_WORKER_TOKEN="+w.token, "MVP_ICE_SERVERS="+string(credentials))
@@ -466,4 +474,15 @@ func (r *Runner) Handler() http.Handler {
 		})
 	}
 	return mux
+}
+
+// Only network-facing containers receive upstream DNS. Isolated application
+// containers keep their loopback DNS and must use the policy-enforcing proxy.
+func (r *Runner) withDockerDNS(args []string) []string {
+	image := args[len(args)-1]
+	args = args[:len(args)-1]
+	for _, address := range r.config.DockerDNS {
+		args = append(args, "--dns", address)
+	}
+	return append(args, image)
 }

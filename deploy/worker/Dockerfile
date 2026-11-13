@@ -7,6 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY bin/session-worker /usr/local/bin/session-worker
 COPY deploy/worker/openbox.xml deploy/worker/welcome.html /opt/mvp1/
 COPY deploy/worker/firefox-policies.json /usr/lib/firefox-esr/distribution/policies.json
+# Checkout umask must not make runtime configuration unreadable by uid 1000.
+# Keep fallback configuration restricted too; never ship a desktop launcher menu.
+COPY deploy/worker/menu.xml /opt/mvp1/menu.xml
+RUN chmod 755 /usr/local/bin/session-worker /opt/mvp1 \
+    && chmod 644 /opt/mvp1/openbox.xml /opt/mvp1/menu.xml /opt/mvp1/welcome.html \
+        /usr/lib/firefox-esr/distribution/policies.json \
+    && cp /opt/mvp1/openbox.xml /etc/xdg/openbox/rc.xml \
+    && cp /opt/mvp1/menu.xml /etc/xdg/openbox/menu.xml \
+    && chmod 644 /etc/xdg/openbox/rc.xml /etc/xdg/openbox/menu.xml
 ENV HOME=/home/app DISPLAY=:99
 USER 0:0
 EXPOSE 8081

@@ -66,7 +66,7 @@ func (r *Runner) startSplitDocker(ctx context.Context, v wire.Start, w worker, p
 	credentials, _ := json.Marshal(turn.Credentials(r.config.TURNURL, r.config.TURNSecret, v.ID, time.Now()))
 	args := []string{"run", "--detach", "--rm", "--init", "--name", w.name, "--label", "mvp1.namespace=" + r.config.Namespace, "--network", r.config.Network, "--sysctl", "net.ipv4.ip_forward=0", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=64", "--memory=256m", "--cpus=1", "-p", "127.0.0.1::8081/tcp", "-p", port + ":" + port + "/udp", "-e", "MVP_MODE=relay", "-e", "MVP_APP=" + v.Template, "-e", "MVP_UDP_PORT=" + port, "-e", "MVP_PUBLIC_IP=" + publicIP, "-e", "MVP_WORKER_TOKEN", "-e", "MVP_ICE_SERVERS", "-e", "MVP_ACCESS", "-e", "MVP_DENIED_CIDRS", "-e", "MVP_APP_NETWORK", r.config.Image}
 	env := []string{"MVP_APP_NETWORK=" + strings.TrimSpace(string(subnet)), "MVP_WORKER_TOKEN=" + w.token, "MVP_ICE_SERVERS=" + string(credentials), "MVP_ACCESS=" + string(policy), "MVP_DENIED_CIDRS=" + strings.TrimSpace(string(subnet)) + "," + r.config.DeniedCIDRs}
-	if err = runContainer(ctx, args, env); err != nil {
+	if err = runContainer(ctx, r.withDockerDNS(args), env); err != nil {
 		return w, err
 	}
 	if _, err = docker(ctx, "network", "connect", network, w.name); err != nil {

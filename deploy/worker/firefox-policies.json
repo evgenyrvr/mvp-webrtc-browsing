@@ -7,6 +7,8 @@
         "Value": "",
         "Status": "locked"
       }
-    }
+    },
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true
   }
 }

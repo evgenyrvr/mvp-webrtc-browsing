@@ -3,6 +3,7 @@
   <focus><focusNew>yes</focusNew><followMouse>no</followMouse></focus>
   <desktops><number>1</number></desktops>
   <applications><application class="*"><maximized>yes</maximized><decor>no</decor></application></applications>
+  <menu><file>/opt/mvp1/menu.xml</file></menu>
   <keyboard/>
   <mouse/>
 </openbox_config>
